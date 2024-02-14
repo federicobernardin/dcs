@@ -1,9 +1,24 @@
 
+--COSE DA SISTEMARE
+-- 1) Avvisare di cambiare freq prima della richiesta takeoff
+-- 2) sistemare audio startup, rumeore di fondo e testo
+-- 3) Aggiungere avviso di cambio freq per APPROC
+-- 4) via così
+
 PilotGroupName = "Uzi11"
 HoldingPointZone = "Hold Point"
+TowerCompetenceZone = "Nellis Tower Zone"
+TowerApprochZone = "Approch Tower change zone"
+AWACSApprochZone = "AWACS activation"
+AWACSShowtimeZone="Showtime activation"
+ShowtimeInformationZone = "Showtime information"
 MenuMainItems = "Nellis AFB"
 RadioPower = 120
 MenuTowerVisible = false
+AWACSEnable = false
+NellisApproch = false
+Showtime = false
+Direction = "ingress" -- "egress"
 
 Messages = {}
 
@@ -38,6 +53,15 @@ function Init()
     Messages["takeoff-response"][1] = 327
     Messages["takeoff-response"][2] = "Uzi1-1, Nellis Tower, cleared for takeoff runway 03R, wind 030/5 knots, after departure climb 5000ft, QNH 29.92."
     Messages["takeoff-response"][3] = 10
+    Messages["landing-request"] = {}
+    Messages["landing-request"][0] = "request landing.ogg"
+    Messages["landing-request"][1] = 327
+    Messages["landing-request"][2] = "Nellis Tower, Uzi1-1, request landing."
+    Messages["landing-response"] = {}
+    Messages["landing-response"][0] = "cleared for landing.ogg"
+    Messages["landing-response"][1] = 327
+    Messages["landing-response"][2] = "Uzi1-1, Nellis Tower, you are cleared for landing in traffic pattern, report final approch, RNWY 21L, Wind 030/5, QNH 29.92."
+    Messages["landing-response"][3] = 10
 end
 
 Airborne = false
@@ -97,13 +121,25 @@ function SendRadioTakeoff()
     SendRadioMessageFromTable("takeoff",true,PilotGroupObject)
 end
 
+function SendRadioLanding()
+    Uzi1 = GROUP:FindByName(PilotGroupName)
+    SendRadioMessageFromTable("landing",true,PilotGroupObject)
+end
+
 
 function sendMessageToGroup(message,group)
     MESSAGE:New( message,10 ):ToGroup(group)
 end
 
-
-
+function RequestLandingMenuCheck()
+    if(UnitInZone(TowerCompetenceZone) or UnitInZone(TowerApprochZone)) then
+        LandingMenu = MENU_COALITION_COMMAND:New( coalition.side.BLUE, "Request landing", MenuCoalitionBlue, SendRadioLanding )
+    else
+        if(LandingMenu) then
+            LandingMenu:Remove()
+        end
+    end
+end
 
 function AddStartMenu()
     StartupMenu = MENU_COALITION_COMMAND:New( coalition.side.BLUE, "Request startup", MenuCoalitionBlue, SendRadioStartup )
@@ -132,6 +168,7 @@ function ScheduleManager()
         ActivateTakeoffMenu()
     else
         RemoveTowerMenu()
+        RequestLandingMenuCheck()
     end
 end
 
@@ -158,6 +195,16 @@ function IsAirborne()
         Airborne = false
     end
 
+end
+
+function UnitInZone(ZoneName)
+    local pilotGroup = GetPilotGroupObject()
+    local zoneObject = ZONE:FindByName(ZoneName)
+    if(pilotGroup and pilotGroup:IsPartlyOrCompletelyInZone(zoneObject)) then
+        return true
+    else
+        return false
+    end
 end
 
 Messager = SCHEDULER:New(nil,ScheduleManager,{},0,1)
