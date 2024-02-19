@@ -1,0 +1,13 @@
+{
+    "folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../../Program Files/Eagle Dynamics/DCS World OpenBeta/Scripts"
+		},
+		{
+			"path": "../../MOOSE/MOOSE-master"
+		}
+	]
+}

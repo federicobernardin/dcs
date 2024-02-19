@@ -12,7 +12,9 @@ TowerApprochZone = "Approch Tower change zone"
 AWACSApprochZone = "AWACS activation"
 AWACSShowtimeZone="Showtime activation"
 ShowtimeInformationZone = "Showtime information"
-MenuMainItems = "Nellis AFB"
+NellisMainMenu = "Nellis AFB"
+GeneralMainMenu = "General"
+
 RadioPower = 120
 MenuTowerVisible = false
 AWACSEnable = false
@@ -23,9 +25,90 @@ Direction = "ingress" -- "egress"
 Messages = {}
 
 
+--- Return Group for specific pilot.
+-- @return #GROUP
+function GetPilotGroupObject()
+    PilotGroupObject = GROUP:FindByName(PilotGroupName)
+    return PilotGroupObject
+end
 
 
+FLIGHT_CONTROL = {
+    towerCompetenceZone = "Nellis Tower Zone",
+    towerApprochZone = "Approch Tower change zone",
+    AWACSApprochZone = "AWACS activation",
+    AWACSShowtimeZone="Showtime activation",
+    showtimeInformationZone = "Showtime information",
+    pilotGroupObject = nil,
+    direction = "next", 
+    controllingShiftingZone = {},
+    init = function(self)
+        self.controllingShiftingZone[0] = {}
+        self.controllingShiftingZone[0]["name"] = "Tower"
+        self.controllingShiftingZone[0]["frequency"] = 327
+        self.controllingShiftingZone[0]["ID"] = "Approch Tower change zone"
+        self.controllingShiftingZone[0]["next"] = "Contact Nellis Approch"
+        self.controllingShiftingZone[0]["message"] = "Contact Nellis Approch"
+        self.controllingShiftingZone[0]["previous"] = "Contact Tower"
+        self.controllingShiftingZone[1] = {}
+        self.controllingShiftingZone[1]["name"] = "Nellis Approch"
+        self.controllingShiftingZone[1]["frequency"] = 327
+        self.controllingShiftingZone[1]["ID"] = "AWACS activation"
+        self.controllingShiftingZone[1]["next"] = "Contact AWACS"
+        self.controllingShiftingZone[1]["previous"] = "Contact Approch"
+        self.controllingShiftingZone[1]["message"] = "Contact AWACS"
+        self.controllingShiftingZone[2] = {}
+        self.controllingShiftingZone[2]["name"] = "AWACS"
+        self.controllingShiftingZone[2]["frequency"] = 305
+        self.controllingShiftingZone[2]["ID"] = "Showtime activation"
+        self.controllingShiftingZone[2]["next"] = "Contact Showtime"
+        self.controllingShiftingZone[2]["previous"] = "Contact AWACS"
+        self.controllingShiftingZone[2]["message"] = "Contact Showtime"
+        self.controllingShiftingZone[3] = {}
+        self.controllingShiftingZone[3]["name"] = "Showtime"
+        self.controllingShiftingZone[3]["frequency"] = 315
+        self.controllingShiftingZone[3]["ID"] = "Showtime information"
+        self.controllingShiftingZone[3]["next"] = nil
+        self.controllingShiftingZone[3]["previous"] = "Showtime information"
+        self.controllingShiftingZone[3]["message"] = "Showtime information"
+    end,
+    zoneCounter = 0,          
+    zoneCounterNext = 1,                                       
+
+    checkStatus = function(self) 
+        if(self.pilotGroupObject == nil) then
+            self.pilotGroupObject= GetPilotGroupObject()
+        end
+        if(self.zoneCounterNext>-1 and self.controllingShiftingZone[self.zoneCounter]["ID"] and UnitInZone(self.controllingShiftingZone[self.zoneCounter]["ID"])) then
+            if(self.controllingShiftingZone[self.zoneCounter]["function"]) then
+                load(self.controllingShiftingZone[self.zoneCounter]["function"])
+            end
+            sendMessageToGroup(self.controllingShiftingZone[self.zoneCounter][self.direction],self.pilotGroupObject)
+            
+            if(self.direction == "next") then
+                self.zoneCounterNext = self.zoneCounterNext + 1
+                self.zoneCounter = self.zoneCounter + 1
+            else
+                self.zoneCounterNext = self.zoneCounterNext - 1
+                self.zoneCounter = self.zoneCounter - 1
+            end
+        else
+        end
+    end,
+    RtbHandler = function(self)
+        if(self.counter == 4) then
+            self.counter = 3
+        end
+        self.direction = "previous"
+    end
+}
+
+
+
+-- funzione per inizializzare la missione
 function Init()
+    --BASE.TraceOnOff(true)
+    FLIGHT_CONTROL:init()
     Messages["startup-request"] = {}
     Messages["startup-request"][0] = "request startup.ogg"
     Messages["startup-request"][1] = 121.8
@@ -73,7 +156,8 @@ Airportport = AIRBASE:FindByName(AIRBASE.Nevada.Nellis_AFB)
 -- Let's get a reference to the Command Center's RADIO
 AirportportRadio = Airportport:GetRadio()  
 
-MenuCoalitionBlue = MENU_COALITION:New( coalition.side.BLUE, MenuMainItems )
+NellisCoalitionMenu = MENU_COALITION:New( coalition.side.BLUE, NellisMainMenu )
+GeneralCoalitionMenu = MENU_COALITION:New( coalition.side.BLUE, GeneralMainMenu )
 
 function sendRadioMessage(file,frequency,message,group)
     -- Now, we'll set up the next transmission
@@ -85,12 +169,7 @@ function sendRadioMessage(file,frequency,message,group)
     sendMessageToGroup(message,group)
 end
 
---- Return Group for specific pilot.
--- @return #GROUP
-function GetPilotGroupObject()
-    PilotGroupObject = GROUP:FindByName(PilotGroupName)
-    return PilotGroupObject
-end
+
 
 
 function SendRadioMessageFromTable(index,answered,group)
@@ -133,7 +212,7 @@ end
 
 function RequestLandingMenuCheck()
     if(UnitInZone(TowerCompetenceZone) or UnitInZone(TowerApprochZone)) then
-        LandingMenu = MENU_COALITION_COMMAND:New( coalition.side.BLUE, "Request landing", MenuCoalitionBlue, SendRadioLanding )
+        LandingMenu = MENU_COALITION_COMMAND:New( coalition.side.BLUE, "Request landing", NellisCoalitionMenu, SendRadioLanding )
     else
         if(LandingMenu) then
             LandingMenu:Remove()
@@ -141,20 +220,33 @@ function RequestLandingMenuCheck()
     end
 end
 
+function RequestRTBMenuCheck(airborne)
+    if(airborne and not RTBMenu) then
+        RTBMenu = MENU_COALITION_COMMAND:New( coalition.side.BLUE, "RTB", GeneralCoalitionMenu, SendRadioLanding )
+    else
+        if(RTBMenu) then
+            RTBMenu:Remove()
+        end
+    end
+end
+
 function AddStartMenu()
-    StartupMenu = MENU_COALITION_COMMAND:New( coalition.side.BLUE, "Request startup", MenuCoalitionBlue, SendRadioStartup )
-    TaxiMenu = MENU_COALITION_COMMAND:New( coalition.side.BLUE, "Request taxi", MenuCoalitionBlue, SendRadioTaxi )
+    StartupMenu = MENU_COALITION_COMMAND:New( coalition.side.BLUE, "Request startup", NellisCoalitionMenu, SendRadioStartup )
+    TaxiMenu = MENU_COALITION_COMMAND:New( coalition.side.BLUE, "Request taxi", NellisCoalitionMenu, SendRadioTaxi )
 end
 
 function RemoveTowerMenu()
     if(StartupMenu) then
         StartupMenu:Remove()
+        StartupMenu = nil
     end
     if(TaxiMenu) then
         TaxiMenu:Remove()
+        TaxiMenu = nil
     end
     if(TakeoffMenu) then
         TakeoffMenu:Remove()
+        TakeoffMenu = nil
     end
     MenuTowerVisible = false
 end
@@ -163,12 +255,14 @@ end
 --- Function to manage all scheduler
 function ScheduleManager()
     IsAirborne()
+    RequestRTBMenuCheck(Airborne)
     if(not Airborne) then
         CheckTowerMenu()
         ActivateTakeoffMenu()
     else
         RemoveTowerMenu()
         RequestLandingMenuCheck()
+        FLIGHT_CONTROL:checkStatus()
     end
 end
 
@@ -183,7 +277,7 @@ end
 function ActivateTakeoffMenu()
     local pilotGroup = GetPilotGroupObject()
     if(pilotGroup and pilotGroup:IsPartlyOrCompletelyInZone(HoldingPointRunway)) then
-        TakeoffMenu = MENU_COALITION_COMMAND:New( coalition.side.BLUE, "Request takeoff", MenuCoalitionBlue, SendRadioTakeoff ) 
+        TakeoffMenu = MENU_COALITION_COMMAND:New( coalition.side.BLUE, "Request takeoff", NellisCoalitionMenu, SendRadioTakeoff ) 
     end
 end
 
@@ -207,6 +301,37 @@ function UnitInZone(ZoneName)
     end
 end
 
-Messager = SCHEDULER:New(nil,ScheduleManager,{},0,1)
+function MoveToApprochOrTower()
+    if(UnitInZone(TowerApprochZone) and Direction == "ingress") then
+        if(Direction == "ingress") then
+            sendMessageToGroup("Passa ad approch",Uzi1)
+        else
+            sendMessageToGroup("passa a tower",Uzi1)
+        end
+    end
+end
+
+function MoveToAWACSOrApproch()
+    if(UnitInZone("AWACSApprochZone") and Direction == "ingress") then
+        if(Direction == "ingress") then
+            sendMessageToGroup("Passa ad awacs",Uzi1)
+        else
+            sendMessageToGroup("passa a approch",Uzi1)
+        end
+    end
+end
+
+function MoveToAWACSOrApproch()
+    if(UnitInZone("AWACSApprochZone") and Direction == "ingress") then
+        if(Direction == "ingress") then
+            sendMessageToGroup("Passa ad awacs",Uzi1)
+        else
+            sendMessageToGroup("passa a approch",Uzi1)
+        end
+    end
+end
+
+
+Messager = SCHEDULER:New(nil,ScheduleManager,{},0,10)
 --dofile(MOOSE_DYNAMIC_LOADER)
 --dofile("C:/vscode sources/dcs/airport/procedures.lua")
